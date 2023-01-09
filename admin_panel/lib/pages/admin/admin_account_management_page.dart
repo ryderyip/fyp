@@ -31,22 +31,19 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   }
 
   Future<void> _fetchPage<T extends User>(int pageKey, PagingController<int, T> pagingController) async {
-    final newItems = List<T>.from(await FetchUserService().fetch<T>(_pageSize, pageKey));
+    final newItems = List<T>.from(await FetchUserService(page: pageKey, pageSize: _pageSize).fetch<T>());
     final isLastPage = newItems.length < _pageSize;
     if (isLastPage) {
       pagingController.appendLastPage(newItems);
     } else {
-      final nextPageKey = pageKey + newItems.length;
+      final nextPageKey = pageKey + 1;
       pagingController.appendPage(newItems, nextPageKey);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    String searchValue = '';
-    int _entryPerPage = 5;
     return DefaultTabController(
-      
       initialIndex: 0,
       length: 3,
       child: Builder(builder: (BuildContext context) {
@@ -54,15 +51,9 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
           appBar: AppBar(
             title: const Text('Account Management'),
             bottom: const TabBar(tabs: <Widget>[
-              Tab(
-                text: 'Students',
-              ),
-              Tab(
-                text: 'Teachers',
-              ),
-              Tab(
-                text: 'Admins',
-              ),
+              Tab(text: 'Students'),
+              Tab(text: 'Teachers'),
+              Tab(text: 'Admins'),
             ]),
           ),
           body: TabBarView(
@@ -122,5 +113,13 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             )
           ]),
     );
+  }
+
+  @override
+  void dispose() {
+    _studentPagingController.dispose();
+    _teacherPagingController.dispose();
+    _adminPagingController.dispose();
+    super.dispose();
   }
 }
