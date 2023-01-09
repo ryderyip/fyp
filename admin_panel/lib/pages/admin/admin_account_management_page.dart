@@ -17,6 +17,7 @@ class AccountManagementPage extends StatefulWidget {
 class _AccountManagementPageState extends State<AccountManagementPage> {
   static const _pageSize = 20;
   static const _firstPageKey = 1;
+  String? _searchbarText;
 
   final PagingController<int, Student> _studentPagingController = PagingController(firstPageKey: _firstPageKey);
   final PagingController<int, Teacher> _teacherPagingController = PagingController(firstPageKey: _firstPageKey);
@@ -31,7 +32,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   }
 
   Future<void> _fetchPage<T extends User>(int pageKey, PagingController<int, T> pagingController) async {
-    final newItems = List<T>.from(await FetchUserService(page: pageKey, pageSize: _pageSize).fetch<T>());
+    final newItems = List<T>.from(await FetchUserService(page: pageKey, pageSize: _pageSize, search: _searchbarText).fetch<T>());
     final isLastPage = newItems.length < _pageSize;
     if (isLastPage) {
       pagingController.appendLastPage(newItems);
@@ -56,11 +57,17 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               Tab(text: 'Admins'),
             ]),
           ),
-          body: TabBarView(
-            children: <Widget>[
-              buildCustomScrollView(_studentPagingController),
-              buildCustomScrollView(_teacherPagingController),
-              buildCustomScrollView(_adminPagingController),
+          body: Column(
+            children: [
+              Expanded(
+                child: TabBarView(
+                  children: <Widget>[
+                    buildCustomScrollView(_studentPagingController),
+                    buildCustomScrollView(_teacherPagingController),
+                    buildCustomScrollView(_adminPagingController),
+                  ],
+                ),
+              )
             ],
           ),
         );
@@ -69,6 +76,19 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   }
 
   Widget buildCustomScrollView<T extends User>(PagingController<int, T> pagingController) {
+    TextEditingController controller = TextEditingController();
+    void updateSearchTerm(String searchTerm) {
+      _searchbarText = searchTerm;
+      pagingController.refresh();
+    }
+
+    void clearSearch() {
+      if (controller.value.text != '') {
+        updateSearchTerm('');
+        controller.clear();
+      }
+    }
+    
     return Scaffold(
       floatingActionButton: FloatingActionButton(
         onPressed: () {
@@ -82,6 +102,26 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
       ),
       body: CustomScrollView(
           slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
+                child: TextField(
+                  controller: controller,
+                  decoration:  InputDecoration(
+                      filled: true,
+                      fillColor: Colors.white38,
+                      hintText: 'Search by name/email/phone/username', 
+                      border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                    suffixIcon: IconButton(
+                    onPressed: clearSearch,
+                    icon: const Icon(Icons.clear),
+                  ),
+                  ),
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: updateSearchTerm,
+                ),
+              ),
+            ),
             PagedSliverList<int, T>(
               pagingController: pagingController,
               builderDelegate: PagedChildBuilderDelegate<T>(itemBuilder: (context, item, index) {
@@ -115,11 +155,20 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     );
   }
 
+
   @override
   void dispose() {
     _studentPagingController.dispose();
     _teacherPagingController.dispose();
     _adminPagingController.dispose();
     super.dispose();
+  }
+}
+
+class CharacterSearchInputSliver extends SliverToBoxAdapter {
+  late TextField _field;
+  
+  CharacterSearchInputSliver({super.key, void Function(String)? onChanged}) {
+    _field = TextField(onChanged: onChanged);
   }
 }
