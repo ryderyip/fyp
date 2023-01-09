@@ -1,3 +1,4 @@
+import 'package:admin_panel/pages/admin/user_detail_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/data/user_entities.dart';
 import 'package:flutter_application_1/services/fetch_user_service.dart';
@@ -89,6 +90,15 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
       }
     }
     
+    void enterDetailPage({required User user}) {
+      Navigator.push(
+          context, 
+          MaterialPageRoute(builder: (_) => UserDetailsPage(
+              user: user,
+              usertype: UserType.fromType(user.runtimeType)))
+      );
+    }
+    
     return Scaffold(
       floatingActionButton: FloatingActionButton(
         onPressed: () {
@@ -124,8 +134,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             ),
             PagedSliverList<int, T>(
               pagingController: pagingController,
-              builderDelegate: PagedChildBuilderDelegate<T>(itemBuilder: (context, item, index) {
-                var userInfo = item.commonInformation;
+              builderDelegate: PagedChildBuilderDelegate<T>(itemBuilder: (context, user, index) {
+                var userInfo = user.commonInformation;
                 return Card(
                     elevation: 0,
                     child: Column(
@@ -135,17 +145,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                             child: ListTile(
                               title: Text('${userInfo.name} (tel.${userInfo.phone})'),
                               subtitle: Text(userInfo.email),
-                            )),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: <Widget>[
-                            IconButton(
-                              onPressed: () {},
-                              icon: const Icon(Icons.info),
-                              tooltip: 'View Details',
-                            ),
-                            const SizedBox(width: 8),
-                          ],
+                              onTap: () => enterDetailPage(user: user),
+                            )
                         ),
                       ],
                     ));

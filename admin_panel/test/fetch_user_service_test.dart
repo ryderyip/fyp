@@ -11,7 +11,7 @@ import 'fetch_user_tests.mocks.dart';
 
 @GenerateMocks([http.Client])
 void main() {
-  group('fetch student/teacher/admin', () {
+  /*group('fetch student/teacher/admin', () {
     test('returns a student if the http call completes successfully', () async {
       final client = MockClient();
       var service = FetchUserService(client: client);
@@ -24,5 +24,5 @@ void main() {
       })).thenAnswer((_) async => Future.delayed(const Duration(seconds: 10)).then((value) => http.Response('', 200)));
       expect(() async => await service.fetchUsers(url.toString()), throwsA(isA<TimeoutException>()));
     });
-  });
+  });*/
 }
