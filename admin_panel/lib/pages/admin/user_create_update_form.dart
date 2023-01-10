@@ -1,62 +1,76 @@
-﻿import 'package:admin_panel/entities/settings_entities.dart';
+﻿import 'dart:async';
+
+import 'package:admin_panel/entities/settings_entities.dart';
 import 'package:admin_panel/pages/admin/create_account_widgets/gender_field.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/data/user_entities.dart';
 import 'package:flutter_application_1/extensions/string_extensions.dart';
-import 'package:flutter_application_1/services/create_user_service.dart';
 import 'package:flutter_application_1/services/fetch_occupations_service.dart';
-import 'package:http/http.dart' as http;
 
 import '../../services/check_availability_service.dart';
 import '../../services/fetch_password_requirement_service.dart';
 import 'create_account_widgets/birthday_field.dart';
+import 'create_account_widgets/check_availibility_buttons.dart';
 
-class AccountCreatePage<T extends User> extends StatefulWidget {
-  const AccountCreatePage({super.key});
+class UserCreateUpdateForm<T extends User> extends StatefulWidget {
+  final UserType userType;
+  
+  final StreamController<T> _userCreatedOrUpdatedController = StreamController<T>.broadcast();
+
+  final String confirmationMessage;
+  Stream<T> get formSubmitted => _userCreatedOrUpdatedController.stream;
+  final T? userToUpdate;
+
+  UserCreateUpdateForm({super.key, required this.userType, this.userToUpdate, required this.confirmationMessage});
 
   @override
-  State<StatefulWidget> createState() => _AccountCreatePageState<T>();
+  State<StatefulWidget> createState() => _UserCreateUpdateFormState();
 }
 
-class _AccountCreatePageState<T extends User> extends State<AccountCreatePage> {
-  // first value is the CreateUserRequestKeys, second is the function that fetches the field value
-  final Map<CreateUserRequestKeys, String Function()> _fieldValueGetterMap = {};
+class _UserCreateUpdateFormState extends State<UserCreateUpdateForm> {
+  late User _userTemplate;
+  final List<void Function()> _templateFieldSetters = [];
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
   @override
-  Widget build(BuildContext context) {
-    return _buildCreateUserPlace();
+  void initState() {
+    super.initState();
+    if (widget.userToUpdate != null) {
+      _userTemplate = widget.userToUpdate!;
+    } else {
+      _userTemplate = widget.userType == UserType.student
+        ? Student.getTemplate()
+        : widget.userType == UserType.teacher
+        ? Teacher.getTemplate()
+        : Admin.getTemplate();
+      _userTemplate.commonInformation.dateOfBirth = DateTime(DateTime.now().year - 18);
+    }
   }
 
-  Widget _buildCreateUserPlace() {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Create ${T == Student ? 'Student' : T == Teacher ? 'Teacher' : 'Admin'} Page'),
-      ),
-      body: FutureBuilder<Iterable<String>>(
+  @override
+  Widget build(BuildContext context) =>
+      FutureBuilder<Iterable<String>>(
           future: FetchOccupationService().fetchOccupations(),
           builder: (context, snapshot) {
             List<Widget> formFields = _makeCommonFields();
-            if (T == Teacher) formFields.addAll(_makeTeacherFields(snapshot.data));
+            if (widget.userType == UserType.teacher) formFields.addAll(_makeTeacherFields(snapshot.data));
             formFields.add(_makeSubmitButton());
 
             return !snapshot.hasData
                 ? const Center(child: CircularProgressIndicator())
                 : GestureDetector(
-                    onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-                    child: SingleChildScrollView(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 20),
-                        child: Form(
-                          key: _formKey,
-                          child: Column(children: formFields),
-                        ),
-                      ),
-                    ),
-                  );
-          }),
-    );
-  }
+              onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 20),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(children: formFields),
+                  ),
+                ),
+              ),
+            );
+          });
 
   List<Widget> _makeCommonFields() {
     return [
@@ -72,7 +86,9 @@ class _AccountCreatePageState<T extends User> extends State<AccountCreatePage> {
 
   Widget makeNameField() {
     final TextEditingController nameController = TextEditingController();
-    _fieldValueGetterMap[CreateUserRequestKeys.fullname] = () => nameController.value.text;
+    String initial = _userTemplate.commonInformation.name;
+    nameController.text = initial;
+    _templateFieldSetters.add(() => _userTemplate.commonInformation.name = nameController.value.text);
     return TextFormField(
       decoration: const InputDecoration(hintText: 'Full Name'),
       validator: (String? value) {
@@ -86,21 +102,25 @@ class _AccountCreatePageState<T extends User> extends State<AccountCreatePage> {
   }
 
   Widget makeGenderField() {
-    Gender selected = Gender.male;
+    Gender initialValue = _userTemplate.commonInformation.gender;
+    Gender selected = initialValue;
     void selectedGenderListener(Gender gender) => selected = gender;
-    _fieldValueGetterMap[CreateUserRequestKeys.gender] = () => selected.name;
+    _templateFieldSetters.add(() => _userTemplate.commonInformation.gender = selected);
     return GenderFieldGroup(defaultSelected: selected, onGenderChanged: selectedGenderListener);
   }
 
   Widget makeBirthdayField() {
-    DateTime selected = DateTime(DateTime.now().year - 18);
+    DateTime initialValue = _userTemplate.commonInformation.dateOfBirth;
+    DateTime selected = initialValue;
     void selectedBirthdayChangedListener(DateTime birthday) => selected = birthday;
-    _fieldValueGetterMap[CreateUserRequestKeys.dateOfBirth] = () => selected.toString();
+    _templateFieldSetters.add(() => _userTemplate.commonInformation.dateOfBirth = selected);
     return BirthdayField(defaultSelected: selected, onBirthdateChanged: selectedBirthdayChangedListener);
   }
 
   Widget makePhoneField() {
     final TextEditingController phoneController = TextEditingController();
+    String initial = _userTemplate.commonInformation.phone;
+    phoneController.text = initial;
     var field = TextFormField(
       maxLength: 20,
       decoration: const InputDecoration(hintText: 'Phone Number'),
@@ -112,55 +132,37 @@ class _AccountCreatePageState<T extends User> extends State<AccountCreatePage> {
       autovalidateMode: AutovalidateMode.onUserInteraction,
       controller: phoneController,
     );
-    _fieldValueGetterMap[CreateUserRequestKeys.phone] = () => phoneController.value.text;
+    _templateFieldSetters.add(() => _userTemplate.commonInformation.phone = phoneController.value.text);
     return field;
   }
 
-  Future<void> _checkAvailabilityAndTellResult(
-          {required Future<bool> Function(String) checkIsAvailable,
-          required String target,
-          required String okText,
-          required String notOkText}) async =>
-      checkIsAvailable(target).then((isAvailable) => isAvailable
-          ? ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Row(
-              children: [Expanded(child: Text(okText)), const Icon(Icons.thumb_up, color: Colors.white)],
-            )))
-          : ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Row(children: [
-              Expanded(child: Text(notOkText)),
-              const Icon(
-                Icons.thumb_down,
-                color: Colors.white,
-              )
-            ]))));
+  
 
   Widget makeEmailField() {
     final TextEditingController emailController = TextEditingController();
     String getEmail() => emailController.value.text;
+    String initial = _userTemplate.commonInformation.email;
+    emailController.text = initial;
+    _templateFieldSetters.add(() => _userTemplate.commonInformation.email = emailController.value.text);
 
-    _fieldValueGetterMap[CreateUserRequestKeys.email] = () => emailController.value.text;
+    var checkButton = CheckAvailibilityButton(enabledInitial: false, 
+      realValueRetriever: getEmail, availabilityCheckingService: CheckEmailAvailabilityService(), valueName: 'Email',);
+    
     return Row(
       children: [
         Expanded(
             child: TextFormField(
-          autovalidateMode: AutovalidateMode.onUserInteraction,
-          controller: emailController,
-          decoration: const InputDecoration(hintText: 'Email Address'),
-          validator: (String? email) {
-            if (email == null || email.isEmpty) return 'Please enter an email address';
-            RegExp emailRegex = RegExp(r'^[\w-.]+@([\w-]+\.)+[\w-]{2,4}$');
-            return !emailRegex.hasMatch(email) ? 'Please enter a valid email address' : null;
-          },
-        )),
-        ElevatedButton(
-          onPressed: () => _checkAvailabilityAndTellResult(
-              checkIsAvailable: CheckEmailAvailabilityService().checkIsAvailable,
-              target: getEmail(),
-              okText: 'Email can be used',
-              notOkText: 'Email is used by another user'),
-          child: const Tooltip(message: 'Check Username Availability', child: Text('Check')),
-        )
+              onChanged: (value) => checkButton.enabled = value != initial,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
+              controller: emailController,
+              decoration: const InputDecoration(hintText: 'Email Address'),
+              validator: (String? email) {
+                if (email == null || email.isEmpty) return 'Please enter an email address';
+                RegExp emailRegex = RegExp(r'^[\w-.]+@([\w-]+\.)+[\w-]{2,4}$');
+                return !emailRegex.hasMatch(email) ? 'Please enter a valid email address' : null;
+              },
+            )),
+        checkButton,
       ],
     );
   }
@@ -168,54 +170,59 @@ class _AccountCreatePageState<T extends User> extends State<AccountCreatePage> {
   Widget makeUsernameField() {
     final TextEditingController usernameController = TextEditingController();
     String getUsername() => usernameController.value.text;
-    _fieldValueGetterMap[CreateUserRequestKeys.username] = getUsername;
+    String initial = _userTemplate.commonInformation.username ?? '';
+    usernameController.text = initial;
+    _templateFieldSetters.add(() => _userTemplate.commonInformation.username = getUsername());
+
+    var checkButton = CheckAvailibilityButton(valueName: 'Username',
+      enabledInitial: false,
+      realValueRetriever: getUsername, availabilityCheckingService: CheckUsernameAvailabilityService(),);
+
     return Row(
       children: [
         Expanded(
             child: TextFormField(
-          autovalidateMode: AutovalidateMode.onUserInteraction,
-          decoration: const InputDecoration(hintText: 'Username'),
-          validator: (String? username) {
-            if (username == null || username.isEmpty) return 'Please enter a username';
-            return username.length < 3 ? 'Username must have at least 3 characters' : null;
-          },
-          controller: usernameController,
-        )),
-        ElevatedButton(
-          onPressed: () => _checkAvailabilityAndTellResult(
-              checkIsAvailable: CheckUsernameAvailabilityService().checkIsAvailable,
-              target: getUsername(),
-              okText: 'This username is available',
-              notOkText: 'This username is used by another user'),
-          child: const Text('Check'),
-        )
+              autovalidateMode: AutovalidateMode.onUserInteraction,
+              decoration: const InputDecoration(hintText: 'Username'),
+              onChanged: (value) => checkButton.enabled = value.isNotEmpty && (value != initial),
+              validator: (String? username) {
+                if (username == null || username.isEmpty) return null;
+                return username.length < 3 ? 'Username must have at least 3 characters' : null;
+              },
+              controller: usernameController,
+            )),
+        checkButton
       ],
     );
   }
 
   Widget makePasswordField() {
     final TextEditingController passwordController = TextEditingController();
-    _fieldValueGetterMap[CreateUserRequestKeys.password] = () => passwordController.value.text;
+    String initialValue = _userTemplate.commonInformation.password;
+    passwordController.text = initialValue;
+    
+    _templateFieldSetters.add(() => _userTemplate.commonInformation.password = passwordController.value.text);
+    
     return FutureBuilder(
       future: FetchPasswordRequirementService().fetch(),
       builder: (context, AsyncSnapshot<PasswordRequirement> snapshot) => !snapshot.hasData
           ? const CircularProgressIndicator()
           : TextFormField(
-              decoration: const InputDecoration(hintText: 'Password', errorMaxLines: 2),
-              autovalidateMode: AutovalidateMode.onUserInteraction,
-              validator: (String? password) {
-                var requirement = snapshot.data!;
-                return (password == null || password.isEmpty)
-                    ? 'Please enter a password'
-                    : !requirement.pattern.hasMatch(password)
-                        ? 'Password must satisfy the following requirements: ${requirement.patternDescription}'
-                        : null;
-              },
-              obscureText: true,
-              enableSuggestions: false,
-              autocorrect: false,
-              controller: passwordController,
-            ),
+        decoration: const InputDecoration(hintText: 'Password', errorMaxLines: 2),
+        autovalidateMode: AutovalidateMode.onUserInteraction,
+        validator: (String? password) {
+          var requirement = snapshot.data!;
+          return (password == null || password.isEmpty)
+              ? 'Please enter a password'
+              : !requirement.pattern.hasMatch(password)
+              ? 'Password must satisfy the following requirements: ${requirement.patternDescription}'
+              : null;
+        },
+        obscureText: true,
+        enableSuggestions: false,
+        autocorrect: false,
+        controller: passwordController,
+      ),
     );
   }
 
@@ -224,6 +231,10 @@ class _AccountCreatePageState<T extends User> extends State<AccountCreatePage> {
       LayoutBuilder(
         builder: (context, constraints) => Autocomplete<String>(
           fieldViewBuilder: (context, occupationController, focusNode, onFieldSubmitted) {
+            _templateFieldSetters.add(() => (_userTemplate as Teacher).occupation = occupationController.value.text);
+            String initial = (_userTemplate as Teacher).occupation;
+            occupationController.text = initial;
+            
             return TextFormField(
               decoration: const InputDecoration(hintText: 'Occupation'),
               autovalidateMode: AutovalidateMode.onUserInteraction,
@@ -288,11 +299,23 @@ class _AccountCreatePageState<T extends User> extends State<AccountCreatePage> {
     bool formValid = _formKey.currentState?.validate() ?? false;
     if (!formValid) return;
 
+    Future<void> onSubmitConfirmed() async {
+      void collectFieldValues() {
+        for (var templateFieldSetter in _templateFieldSetters) {
+          templateFieldSetter();
+        }
+      }
+      collectFieldValues();
+
+      Navigator.of(context).pop();
+      widget._userCreatedOrUpdatedController.add(_userTemplate);
+    }
+
     showDialog(
       context: context,
       builder: (BuildContext context) => AlertDialog(
         title: const Text("Confirmation"),
-        content: const Text("Confirm creating user?"),
+        content: Text(widget.confirmationMessage),
         actions: [
           TextButton(
             child: const Text("Cancel"),
@@ -301,39 +324,6 @@ class _AccountCreatePageState<T extends User> extends State<AccountCreatePage> {
           TextButton(
             onPressed: onSubmitConfirmed,
             child: const Text("Confirm"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> onSubmitConfirmed() async {
-    Map<CreateUserRequestKeys, String> fieldValueMap =
-        _fieldValueGetterMap.map((key, value) => MapEntry<CreateUserRequestKeys, String>(key, value()));
-    var res = await CreateUserService().create<T>(fieldValueMap);
-    var successful = res.statusCode == 200;
-    if (successful)
-      onSuccessfulCreated();
-    else
-      onFailedToCreate(res);
-  }
-
-  void onSuccessfulCreated() {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('User Created!')));
-    Navigator.of(context).popUntil((route) => route.isFirst);
-    // TODO goto new user detail page
-  }
-
-  void onFailedToCreate(http.Response res) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) => AlertDialog(
-        title: const Text("Failed to create user"),
-        content: Text('Response Code: ${res.statusCode}.\nReason: ${res.reasonPhrase ?? ''}'),
-        actions: [
-          TextButton(
-            child: const Text("Ok"),
-            onPressed: () => Navigator.of(context).pop(),
           ),
         ],
       ),
